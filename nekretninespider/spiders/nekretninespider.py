@@ -1,6 +1,8 @@
 import scrapy
 import datetime
 import time
+import os
+import re
 from nekretninespider.items import AdItem
 
 
@@ -68,6 +70,8 @@ class NekretninetSpider(scrapy.Spider):
         image_selector = '#a' + str(image_counter) + ' > img'
 
         item['updated'] = response.css(updated_selector).extract_first()
+        if bool(re.compile('\n').search(item['updated'])):
+            item['updated'] = ''
         image_tag = response.css(image_selector)
         while image_tag:
             path = image_tag.xpath("@src").extract_first()
@@ -95,11 +99,12 @@ class NekretninetSpider(scrapy.Spider):
             st = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
             self.file_all_items.write(st + '\t' + item['name'] + '\t' + item['location'] + '\t' + item['price'] + '\t' +
                                   str(len(item['file_paths'])) + '\t' + item['link'] + '\t' + item['updated'] + '\n')
+            self.file_all_items.flush()
         if items_list[0]:
             self.update_last_scraped_item(items_list[0])
 
     def update_last_scraped_item(self, item):
-        file_last_scraped = open(self.FILE_LAST_SCRAPED, 'w')
+        file_last_scraped = open(self.FILE_LAST_SCRAPED, 'w+')
         file_last_scraped.write(item['name'] + '\t' + item['location'] + '\t'
                                 + item['price'] + '\t'
                                 + str(len(item['file_paths']))
@@ -108,20 +113,25 @@ class NekretninetSpider(scrapy.Spider):
         file_last_scraped.close()
 
     def get_last_scraped_item(self):
-        file_last_scraped = open(self.FILE_LAST_SCRAPED, 'r')
-        splited_item = file_last_scraped.readline().split('\t')
         last_scraped_item = AdItem()
-        if len(splited_item) > 5:
-            last_scraped_item['link'] = splited_item[4]
-            #self.last_scraped_item['updated'] = splited_item[5] if dim > 5 else ''
-        else:
-            last_scraped_item['link'] = ''
+        last_scraped_item['link'] = ''
+        if os.path.exists(self.FILE_LAST_SCRAPED):
+            file_last_scraped = open(self.FILE_LAST_SCRAPED, 'r')
+            splited_item = file_last_scraped.readline().split('\t')
+            if len(splited_item) > 5:
+                last_scraped_item['link'] = splited_item[4]
+                #self.last_scraped_item['updated'] = splited_item[5] if dim > 5 else ''
+            file_last_scraped.close()
         print('Last scraped item: ' + last_scraped_item['link'])
-        file_last_scraped.close()
         return last_scraped_item
 
     def open_all_items_file(self):
-        self.file_all_items = open(self.FILE_ALL_ITEMS, 'a')
+        if os.path.exists(self.FILE_ALL_ITEMS):
+            append_write = 'a'
+        else:
+            append_write = 'w'
+        self.file_all_items = open(self.FILE_ALL_ITEMS, append_write)
 
     def close_all_items_file(self):
-        self.file_all_items.close()
+        if hasattr(self, 'closed') and not self.closed:
+            self.file_all_items.close()
